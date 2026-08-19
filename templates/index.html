@@ -166,6 +166,10 @@ td:nth-child(17) {
 
     <h1>Xlab Webdashboard</h1>
 
+    <a href="/tickets-page">
+    <button>Tickets bekijken</button>
+</a>
+
     <div class="filters">
 
         <input
@@ -258,31 +262,7 @@ td:nth-child(17) {
     <h2>Tickets gesloten per maand</h2>
     <canvas id="geslotenPerMaandChart"></canvas>
 </div>
-</div>
-    <div class="table-container">
 
-      <table>
-
-    <thead>
-        <tr>
-            <th>dossier_id</th>
-            <th>Status</th>
-            <th>Ticketnr</th>
-            <th>Gewijzigd</th>
-            <th>Soort ticket</th>
-            <th>Aangemeld door</th>
-            <th>Onderwerp</th>
-            <th>Omgeving</th>
-            <th>Prio</th>
-            <th>Impact</th>
-            <th>Datum</th>
-            <th>Toelichting</th>
-            <th>Organisatie</th>
-            <th>created_by</th>
-            <th>created_at</th>
-            <th>modified_by</th>
-            <th>modified_at</th>
-        </tr>
     </thead>
 
     <tbody id="ticketTabel">
@@ -473,7 +453,11 @@ document.getElementById("melding").textContent =
 
     const tabel = document.getElementById("ticketTabel");
 
-    tabel.innerHTML = "";
+if (!tabel) {
+    return;
+}
+
+tabel.innerHTML = "";
 
     if (tickets.length === 0) {
 

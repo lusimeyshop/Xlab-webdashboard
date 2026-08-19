@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Xlab Tickets</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f6f8;
+            color: #222;
+        }
+
+        h1 {
+            margin-bottom: 15px;
+        }
+
+        .topbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .button {
+            display: inline-block;
+            border: none;
+            padding: 9px 14px;
+            border-radius: 5px;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .back {
+            background: #1976d2;
+            color: white;
+        }
+
+        .export {
+            background: #2e7d32;
+            color: white;
+        }
+
+        .filters {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+
+        .filters h2 {
+            margin-top: 0;
+            font-size: 18px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        select,
+        input {
+            padding: 9px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        .zoeken {
+            background: #1976d2;
+            color: white;
+        }
+
+        .reset {
+            background: #666;
+            color: white;
+        }
+
+        #melding {
+            margin: 10px 0 15px 0;
+            font-weight: bold;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            background: white;
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            min-width: 1600px;
+        }
+
+        th {
+            background: #1f4e78;
+            color: white;
+            padding: 9px;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            white-space: nowrap;
+        }
+
+        tr:hover {
+            background: #f1f1f1;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Xlab Tickets</h1>
+
+    <div class="topbar">
+        <a href="/" class="button back">
+            ← Terug naar dashboard
+        </a>
+
+        <a href="/tickets/export" class="button export">
+            ↓ Exporteren naar Excel/CSV
+        </a>
+    </div>
+
+
+    <!-- FILTERS -->
+    <div class="filters">
+
+        <h2>Tickets zoeken</h2>
+
+        <div class="filter-row">
+
+            <select id="status">
+                <option value="">Alle statussen</option>
+
+                <option value="New">Nieuw</option>
+                <option value="Development">Development</option>
+                <option value="Opgepakt">Opgepakt</option>
+                <option value="Ter acceptatie">Ter acceptatie</option>
+
+                <option value="Antwoord van opdrachtgever">
+                    Antwoord van opdrachtgever
+                </option>
+
+                <option value="Vraag naar opdrachtgever">
+                    Vraag naar opdrachtgever
+                </option>
+
+                <option value="Interne communicatie">
+                    Interne communicatie
+                </option>
+
+                <option value="Geaccepteerd (gesloten)">
+                    Geaccepteerd (gesloten)
+                </option>
+
+                <option value="Gesloten (anders)">
+                    Gesloten (anders)
+                </option>
+            </select>
+
+
+            <input
+                type="text"
+                id="organisatie"
+                placeholder="Organisatie"
+                >
+
+
+            <input
+                type="text"
+                id="zoekterm"
+                placeholder="Zoek ticketnr, onderwerp..."
+            >
+
+
+            <button
+                class="button zoeken"
+                onclick="zoekTickets()"
+            >
+                Zoeken
+            </button>
+
+
+            <button
+                class="button reset"
+                onclick="resetFilters()"
+            >
+                Reset
+            </button>
+
+        </div>
+    </div>
+
+
+    <div id="melding">
+        Tickets worden geladen...
+    </div>
+
+
+    <!-- TABEL -->
+    <div class="table-container">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>dossier_id</th>
+                    <th>Status</th>
+                    <th>Ticketnr</th>
+                    <th>Gewijzigd</th>
+                    <th>Soort ticket</th>
+                    <th>Aangemeld door</th>
+                    <th>Onderwerp</th>
+                    <th>Omgeving</th>
+                    <th>Prio</th>
+                    <th>Impact</th>
+                    <th>Datum</th>
+                    <th>Toelichting</th>
+                    <th>Organisatie</th>
+                    <th>created_by</th>
+                    <th>created_at</th>
+                    <th>modified_by</th>
+                    <th>modified_at</th>
+                </tr>
+            </thead>
+
+            <tbody id="ticketTabel"></tbody>
+
+        </table>
+
+    </div>
+
+
+    <script>
+
+        async function laadTickets(url = "/tickets") {
+
+            const tabel = document.getElementById("ticketTabel");
+            const melding = document.getElementById("melding");
+
+            melding.textContent = "Tickets worden geladen...";
+            tabel.innerHTML = "";
+
+            try {
+
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error("Fout bij ophalen tickets");
+                }
+
+                const tickets = await response.json();
+
+                tickets.forEach(function(ticket) {
+
+                    const rij = document.createElement("tr");
+
+                    rij.innerHTML = `
+                        <td>${ticket.dossier_id ?? ""}</td>
+
+                        <td class="status">
+                            ${toonStatus(ticket.status)}
+                        </td>
+
+                        <td>${ticket.ticketnr ?? ""}</td>
+
+                        <td>${ticket.gewijzigd ?? ""}</td>
+
+                        <td>${ticket.soort_ticket ?? ""}</td>
+
+                        <td>${ticket.aangemeld_door ?? ""}</td>
+
+                        <td>${ticket.onderwerp ?? ""}</td>
+
+                        <td>${ticket.omgeving ?? ""}</td>
+
+                        <td>${ticket.prio ?? ""}</td>
+
+                        <td>${ticket.impact ?? ""}</td>
+
+                        <td>${ticket.datum ?? ""}</td>
+
+                        <td>${ticket.toelichting ?? ""}</td>
+
+                        <td>${ticket.organisatie ?? ""}</td>
+
+                        <td>${ticket.created_by ?? ""}</td>
+
+                        <td>${ticket.created_at ?? ""}</td>
+
+                        <td>${ticket.modified_by ?? ""}</td>
+
+                        <td>${ticket.modified_at ?? ""}</td>
+                    `;
+
+                    tabel.appendChild(rij);
+                });
+
+
+                melding.textContent =
+                    tickets.length + " tickets gevonden.";
+
+            } catch (error) {
+
+                console.error(error);
+
+                melding.textContent =
+                    "Er is een fout opgetreden bij het laden van de tickets.";
+
+            }
+        }
+
+
+        function toonStatus(status) {
+
+            if (status === "New") {
+                return "Nieuw";
+            }
+
+            return status ?? "";
+        }
+
+
+        async function zoekTickets() {
+
+            const status =
+                document.getElementById("status").value;
+
+            const organisatie =
+                document.getElementById("organisatie").value.trim();
+                const zoekterm =
+                document.getElementById("zoekterm").value.trim();
+
+
+            const parameters = new URLSearchParams();
+
+
+            if (status) {
+                parameters.append("status", status);
+            }
+
+            if (organisatie) {
+                parameters.append("organisatie", organisatie);
+            }
+
+            if (zoekterm) {
+                parameters.append("zoekterm", zoekterm);
+            }
+
+
+            let url = "/tickets/search";
+
+
+            if (parameters.toString()) {
+                url += "?" + parameters.toString();
+            }
+
+
+            await laadTickets(url);
+        }
+
+
+        function resetFilters() {
+
+            document.getElementById("status").value = "";
+
+            document.getElementById("organisatie").value = "";
+
+            document.getElementById("zoekterm").value = "";
+
+            laadTickets("/tickets");
+        }
+
+
+        /*
+         * Met Enter zoeken
+         */
+        document.getElementById("zoekterm")
+            .addEventListener("keydown", function(event) {
+
+                if (event.key === "Enter") {
+                    zoekTickets();
+                }
+
+            });
+
+
+        /*
+         * Bij openen alle tickets laden
+         */
+        laadTickets();
+
+    </script>
+
+</body>
+</html>

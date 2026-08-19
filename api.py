@@ -1,6 +1,18 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 import mysql.connector
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
+import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -20,7 +32,6 @@ def home():
         media_type="text/html"
     )
 
-
 @app.get("/tickets")
 def get_tickets():
     db = get_db()
@@ -29,10 +40,49 @@ def get_tickets():
     cursor.execute("SELECT * FROM tickets")
     tickets = cursor.fetchall()
 
+    logger.info("Tickets opgehaald: %s", len(tickets))
+
     cursor.close()
     db.close()
 
     return tickets
+@app.get("/tickets/statussen")
+def get_statussen():
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("""
+        SELECT DISTINCT status
+        FROM tickets
+        ORDER BY status
+    """)
+
+    statussen = cursor.fetchall()
+
+    cursor.close()
+    db.close()
+
+    return [status[0] for status in statussen]
+@app.get("/tickets/status-count")
+def status_count():
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT
+            status,
+            COUNT(*) AS aantal
+        FROM tickets
+        GROUP BY status
+        ORDER BY status
+    """)
+
+    resultaten = cursor.fetchall()
+
+    cursor.close()
+    db.close()
+
+    return resultaten
 @app.get("/tickets/search")
 def search_tickets(
     status: str | None = None,
@@ -46,11 +96,11 @@ def search_tickets(
     waarden = []
 
     if status:
-        query += " AND status = %s"
+        query += " AND TRIM(status) = TRIM(%s)"
         waarden.append(status)
 
     if organisatie:
-        query += " AND organisatie = %s"
+        query += " AND TRIM(organisatie) = TRIM(%s)"
         waarden.append(organisatie)
 
     if zoekterm:
@@ -70,31 +120,28 @@ def search_tickets(
     cursor.execute(query, tuple(waarden))
     tickets = cursor.fetchall()
 
+    logger.info(
+        "Ticketzoekopdracht uitgevoerd - status=%s, organisatie=%s, zoekterm=%s, resultaten=%s",
+        status,
+        organisatie,
+        zoekterm,
+        len(tickets)
+    )
+
     cursor.close()
     db.close()
 
     return tickets
 
-
-@app.get("/tickets/{ticket_id}")
-def get_ticket(ticket_id: int):
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-
-    cursor.execute(
-        "SELECT * FROM tickets WHERE id = %s",
-        (ticket_id,)
+@app.get("/tickets-page")
+def tickets_page():
+    return FileResponse(
+        "templates/tickets.html",
+        media_type="text/html"
     )
 
-    ticket = cursor.fetchone()
 
-    cursor.close()
-    db.close()
 
-    if ticket is None:
-        return {"message": "Ticket niet gevonden"}
-
-    return ticket
 
 from pydantic import BaseModel
 from datetime import date
@@ -115,7 +162,103 @@ class TicketCreate(BaseModel):
     created_by: str
     modified_by: str
 
+@app.get("/tickets/export")
+def export_tickets():
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
 
+    cursor.execute("SELECT * FROM tickets ORDER BY id DESC")
+    tickets = cursor.fetchall()
+
+    cursor.close()
+    db.close()
+
+    if not tickets:
+        return {"message": "Geen tickets gevonden"}
+
+    # Nieuw Excel-bestand maken
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tickets"
+
+    # Kolommen uit de database
+    kolommen = list(tickets[0].keys())
+
+    # Header schrijven
+    for kolom_nummer, kolom in enumerate(kolommen, start=1):
+        cel = ws.cell(
+            row=1,
+            column=kolom_nummer,
+            value=kolom
+        )
+
+        cel.font = Font(bold=True)
+        cel.fill = PatternFill(
+            fill_type="solid",
+            fgColor="D9EAF7"
+        )
+        cel.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
+
+    # Tickets schrijven
+    for rij_nummer, ticket in enumerate(tickets, start=2):
+        for kolom_nummer, kolom in enumerate(kolommen, start=1):
+            waarde = ticket.get(kolom)
+
+            if waarde is not None:
+                waarde = str(waarde)
+
+            cel = ws.cell(
+                row=rij_nummer,
+                column=kolom_nummer,
+                value=waarde
+            )
+
+            cel.alignment = Alignment(
+                vertical="top",
+                wrap_text=True
+            )
+
+    # Kolombreedtes automatisch instellen
+    for kolom_nummer, kolom in enumerate(kolommen, start=1):
+        maximale_lengte = len(str(kolom))
+
+        for rij in range(2, ws.max_row + 1):
+            waarde = ws.cell(
+                row=rij,
+                column=kolom_nummer
+            ).value
+
+            if waarde is not None:
+                maximale_lengte = max(
+                    maximale_lengte,
+                    len(str(waarde))
+                )
+
+        # Niet extreem breed maken
+        breedte = min(max(maximale_lengte + 2, 12), 45)
+
+        ws.column_dimensions[
+            get_column_letter(kolom_nummer)
+        ].width = breedte
+
+    # Eerste rij vastzetten
+    ws.freeze_panes = "A2"
+
+    # Filter op alle kolommen
+    ws.auto_filter.ref = ws.dimensions
+
+    # Excel-bestand opslaan
+    bestand = os.path.abspath("tickets_export.xlsx")
+
+    wb.save(bestand)
+
+    return FileResponse(
+        path=bestand,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="tickets_export.xlsx")
 @app.post("/tickets")
 def create_ticket(ticket: TicketCreate):
     db = get_db()
@@ -185,7 +328,6 @@ class TicketUpdate(BaseModel):
     organisatie: str
     created_by: str
     modified_by: str
-
 
 @app.put("/tickets/{ticket_id}")
 def update_ticket(ticket_id: int, ticket: TicketUpdate):
