@@ -1,7 +1,7 @@
 import pandas as pd
 import mysql.connector
 
-bestand = r"C:\Xlab-Webdashboard\Ticketsysteem mockdata (1).xlsx"
+bestand = '"Ticketsysteem mockdata (1).xlsx"'
 
 df = pd.read_excel(bestand)
 
